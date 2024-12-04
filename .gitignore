@@ -1,2 +1,10 @@
+# Ignore virtual environment folder
+venv/
+
+# Ignore Python cache files
+__pycache__/
+
+# Ignore environment variables file
 .env
 
+# Ignore any other files or folders you don't want to commit

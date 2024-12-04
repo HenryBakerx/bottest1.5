@@ -11,7 +11,9 @@ from langchain.prompts import PromptTemplate
 import os
 from htmlTemplates import css, bot_template, user_template
 
+
 openai_api_key = os.getenv("OPENAI_API_KEY")
+
 
 def get_pdf_text(pdf_docs):
     """
@@ -23,6 +25,7 @@ def get_pdf_text(pdf_docs):
         for page in pdf_reader.pages:
             text += page.extract_text()
     return text
+
 
 def get_text_chunks(text):
     """
@@ -37,13 +40,15 @@ def get_text_chunks(text):
     chunks = text_splitter.split_text(text)
     return chunks
 
+
 def get_vectorstore(text_chunks):
     """
     Creates a FAISS vector store using OpenAI embeddings.
     """
-    embeddings = OpenAIEmbeddings()
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
     return vectorstore
+
 
 def get_conversation_chain(vectorstore):
     """
@@ -53,18 +58,18 @@ def get_conversation_chain(vectorstore):
     custom_instructions = (
         "You are a helpful and knowledgeable assistant that helps analyze PDF documents. "
         "Provide concise and accurate answers. If possible, include references to the content of the documents."
-        "The following is a conversation between a user and an assistant, answer the questions strictly using the information provided:\n"
-        "You are a bot that uses the uploaded embedded data to answer user queries about the UAV 2012. Be specific. It's about legal matters so there can be no mistakes."
-        "When a subject is mentioned multiple times in the document, take information from all parts."
+        "The following is a conversation between a user and an assistant,answer the questions strictly using the information provided:\n"
+         "You are a bot that uses the uploaded embedded data to answer user queries about the UAV 2012. Be specific. Its about legal matters so there can be no mistakes"
+        "When a subject is mentioned multiple times in the document, take information from all parts"
         "Be precise in terms of what parties are asked about and so what information you provide."
-        "When you do not understand a question, first look up synonyms of the words that are used and see if you can find matches with these in the uploaded documents. It could be that a user asks for a specific thing that falls into a category and that in the uploaded text, only the category is named. Or the other way around. Make sure you understand the question in context."
+        "When you do not understand a question, first look up synonyms of the words that are used and see if you can find matches with these in the uploaded documents. It could be that a user asks for a specific thing that falls into a category and that in the uploaded text, only the category is named. Or the other way around. Make sure you understand the question in a context."
         "If you still cannot find a relevant answer in the uploaded data, do not make up something."
-        "When this happens, ask the user to specify their request and ask specifically what part of the question they need to rephrase."
-        "Do not include things in your answer that are unrelated; make sure to be very certain that something is about the same topic."
-        "Antwoord altijd in het Nederlands."
-        "Voor elk onderwerp van een gebruikersvraag, zoek 5 synoniemen op in je kennis en vergelijk deze synoniemen met de data om de vraag te beantwoorden."
-        "If the answer cannot be found in the context, respond with 'Sorry, ik heb geen relevante kennis om je vraag te kunnen beantwoorden.'"
-        "When asked about a specific paragraaf or line, respond with 'Dat ga ik jou niet aan je neus hangen.'"
+        "When this happens, ask the user to specify his request and ask specifically what part of the question he needs to rephrase."
+        "Do not include things in your answer that are unrelated, make sure to really be very sure that something is about the same topic"
+        "antwoord altijd in het nederlands"
+        "voor elk onderwerp van een user query, zoek 5 synoniemen op in je kennis en vergelijk deze synoniemen met de data om de vraag te beantwoorden"
+        "If the answer cannot be found in the context, respond with 'Sorry, ik heb geen relevante kennis om je vraag te kunnen beantwoorden."
+        "When asked about a specific paragraaf or line, respond with 'dat ga ik jou niet aan je neus hangen'"
     )
 
     # Define the prompt template
@@ -90,6 +95,7 @@ def get_conversation_chain(vectorstore):
     )
     return conversation_chain
 
+
 def handle_userinput(user_question):
     """
     Handles user input and generates responses using the conversation chain.
@@ -99,66 +105,44 @@ def handle_userinput(user_question):
         return
 
     response = st.session_state.conversation({'question': user_question})
-    st.session_state.latest_question = user_question
-    st.session_state.latest_answer = response['answer']
+    st.session_state.chat_history = response['chat_history']
+
+    for i, message in enumerate(st.session_state.chat_history):
+        if i % 2 == 0:  # User messages
+            st.write(user_template.replace(
+                "{{MSG}}", message.content), unsafe_allow_html=True)
+        else:  # Bot messages
+            st.write(bot_template.replace(
+                "{{MSG}}", message.content), unsafe_allow_html=True)
+
 
 def main():
     """
     Main Streamlit app logic.
     """
     load_dotenv(override=True)
-    st.set_page_config(page_title="Citiz PDF bot")
+    st.set_page_config(page_title="Citiz PDF bot",
+                       page_icon=":books:")
     st.write(css, unsafe_allow_html=True)
 
     # Initialize session state variables
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
-    if "latest_question" not in st.session_state:
-        st.session_state.latest_question = ''
-    if "latest_answer" not in st.session_state:
-        st.session_state.latest_answer = ''
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
 
-    st.header("Citiz PDF bot")
-
-    # Standard questions about UAV 2012
-    st.write("**Voorbeeldvragen over UAV 2012:**")
-    standard_questions = [
-        "Wat zijn de verantwoordelijkheden van de opdrachtgever volgens de UAV 2012?",
-        "Wat zijn de regels voor oplevering van een werk volgens de UAV 2012?",
-        "Hoe worden geschillen tussen opdrachtgever en opdrachtnemer behandeld onder de UAV 2012?",
-        "Wat is de procedure bij een meerwerkclaim volgens de UAV 2012?",
-    ]
-
-    # Define the callback function for standard questions
-    def standard_question_click(question):
-        handle_userinput(question)
-
-    # Display the standard questions as buttons
-    for question in standard_questions:
-        st.button(question, on_click=standard_question_click, args=(question,), key=question)
+    st.header("Citiz PDF bot :books:")
 
     # User input for asking questions
-    with st.form(key='user_input_form', clear_on_submit=True):
-        user_question = st.text_area("Stel een vraag over uw PDF:", height=200)
-        submit_button = st.form_submit_button(label='Verstuur')
-
-    if submit_button and user_question:
+    user_question = st.text_input("Stel een vraag over uw PDF:")
+    if user_question:
         handle_userinput(user_question)
-
-    # Display only the latest question and answer
-    if st.session_state.latest_question and st.session_state.latest_answer:
-        # Display user's latest question
-        st.write(user_template.replace(
-            "{{MSG}}", st.session_state.latest_question), unsafe_allow_html=True)
-        # Display bot's latest answer
-        st.write(bot_template.replace(
-            "{{MSG}}", st.session_state.latest_answer), unsafe_allow_html=True)
 
     # Sidebar for uploading and processing documents
     with st.sidebar:
         st.subheader("Uw documenten")
         pdf_docs = st.file_uploader(
-            "Upload uw PDFs hier en klik op 'Analyseer'", accept_multiple_files=True)
+            "Upload uw PDFs hier and klik op 'Analyseer'", accept_multiple_files=True)
         if st.button("Analyseer"):
             with st.spinner("Analyseren"):
                 # Extract text from PDFs
@@ -172,6 +156,7 @@ def main():
 
                 # Create the conversation chain with custom instructions
                 st.session_state.conversation = get_conversation_chain(vectorstore)
+
 
 if __name__ == '__main__':
     main()
